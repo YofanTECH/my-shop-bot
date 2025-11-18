@@ -6,7 +6,7 @@ from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
 
 state_storage = StateMemoryStorage()
-bot = telebot.TeleBot(os.getenv("8575320394:AAGVQxlmgrD0-bhGvTkhvL5KvAjUh4dFsXw"), parse_mode="HTML")
+bot = telebot.TeleBot(os.getenv("Token"), parse_mode="HTML")
 admin_id = 7213658944  # ← change to your Telegram ID if you want admin commands
 
 # === Main Menu ===
