@@ -1,127 +1,108 @@
-import telebot
-import re
 import os
+import re
+import telebot
+from telebot import types
+from telebot.handler_backends import State, StatesGroup
+from telebot.storage import StateMemoryStorage
 
-TOKEN = "8575320394:AAGVQxlmgrD0-bhGvTkhvL5KvAjUh4dFsXw"  # Get from @BotFather
-bot = telebot.TeleBot(TOKEN)
+state_storage = StateMemoryStorage()
+bot = telebot.TeleBot(os.getenv("8575320394:AAGVQxlmgrD0-bhGvTkhvL5KvAjUh4dFsXw"), parse_mode="HTML")
+admin_id = 7213658944  # ← change to your Telegram ID if you want admin commands
 
-CHANNEL = "@DarkWeb_MarketStore"
-SUPPORT = "@Backdoor_Operator"
+# === Main Menu ===
+def main_menu():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Browse Products", callback_data="categories"),
+        types.InlineKeyboardButton("How to Order", callback_data="howto"),
+        types.InlineKeyboardButton("Support", url="t.me/Backdoor_Operator"),
+        types.InlineKeyboardButton("Channel", url="t.me/DarkWeb_MarketStore")
+    )
+    return markup
 
-MENU = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-MENU.add("🛍 Browse Products", "💳 Service Availability")
-MENU.add("ℹ How to Order", "👤 Support")
+# === Categories Menu ===
+def categories_menu():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("Drugs", callback_data="cat_drugs"),
+        types.InlineKeyboardButton("Cards & Docs", callback_data="cat_cards"),
+        types.InlineKeyboardButton("Hacking", callback_data="cat_hacking"),
+        types.InlineKeyboardButton("Counterfeit", callback_data="cat_counterfeit"),
+        types.InlineKeyboardButton("Back", callback_data="back_main")
+    )
+    return markup
 
+# === Fake product list (you can expand) ===
+products = {
+    "cat_drugs": ["Cocaine 1g – $90", "MDMA 1g – $70", "Weed 10g – $110"],
+    "cat_cards": ["USA CC Fullz – $35", "EU Bank Login – $180", "PayPal Verified – $120"],
+    "cat_hacking": ["Ransomware Source – $450", "Keylogger 2025 – $80", "Zero-Day Exploit – $1200"],
+    "cat_counterfeit": ["USD 10k Bundle – $800", "Fake ID + License – $300"]
+}
+
+# === Start & Forward Handler ===
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(message.chat.id,
-        "Welcome to DarkWeb Market! 🛍️\n\nChoose an option below:",
-        reply_markup=MENU)
+                     "<b>DARKWEB MARKET</b>\n"
+                     "World-wide underground prices | Fast delivery\n"
+                     "We only accept Bitcoin • Monero • Zcash",
+                     reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "🛍 Browse Products")
-def browse(message):
-    bot.send_message(message.chat.id, """
-To order a product:
+@bot.message_handler(content_types=['text', 'photo', 'document'])
+def handle_forward(message):
+    if message.forward_from or message.forward_from_chat:
+        text = message.caption or message.text or ""
+        price_match = re.search(r'(\d+[\d,]*)\s*[\$€£]', text, re.I)
+        if price_match:
+            price = price_match.group(1).replace(",", "")
+            product_name = text.split("\n")[0][:50]
+            pay_buttons(message.chat.id, product_name, price)
 
-1️⃣ Go to our channel → https://t.me/DarkWeb_MarketStore
-2️⃣ Choose any product  
-3️⃣ Forward the product post here
-
-I will check the product and show you payment options.
-    """, reply_markup=MENU)
-
-@bot.message_handler(func=lambda m: m.text == "💳 Service Availability")
-def service(message):
-    bot.send_message(message.chat.id, """
-🌍 Service Availability
-
-We currently serve customers in:
-
-🇪🇹 Ethiopia  
-🌍 Worldwide shipping available for selected electronics  
-
-💳 Payment Methods:
-✔ Bitcoin (BTC)  
-✔ Zcash (ZEC)
-
-📦 Delivery Times:
-• Ethiopia: 3–7 days  
-• Worldwide: 5–12 days
-    """, reply_markup=MENU)
-
-@bot.message_handler(func=lambda m: m.text == "ℹ How to Order")
-def howto(message):
-    bot.send_message(message.chat.id, """
-🛒 How to Order
-
-1️⃣ Open our channel → https://t.me/DarkWeb_MarketStore
-2️⃣ Pick any product  
-3️⃣ Forward the post to this bot  
-4️⃣ Choose BTC or Zcash  
-5️⃣ Make the payment  
-6️⃣ Press "I Paid"  
-7️⃣ Our support will verify your payment and process delivery
-
-Simple and fast.
-    """, reply_markup=MENU)
-
-@bot.message_handler(func=lambda m: m.text == "👤 Support")
-def support(message):
-    kb = telebot.types.InlineKeyboardMarkup()
-    kb.add(telebot.types.InlineKeyboardButton("👤 Contact Support", url="https://t.me/Backdoor_Operator"))
-    bot.send_message(message.chat.id, "Need help?\nTap the button below to chat with support.", reply_markup=kb)
-
-@bot.message_handler(content_types=['text'], func=lambda m: m.forward_from and str(m.forward_from.username) == CHANNEL[1:] or m.forward_from_chat and str(m.forward_from_chat.username) == CHANNEL[1:])
-def forwarded_product(message):
-    caption = message.caption or ""
-    
-    # Check if SOLD (case-insensitive)
-    if any(x in caption.upper() for x in ["SOLD", "OUT OF STOCK"]):
-        bot.reply_to(message, "❌ This item is SOLD.\nPlease choose another product.")
-        return
-    
-    # Extract price (supports $10 or 10 USD)
-    price_match = re.search(r'\$([\d,.]+)|(\d+)[\s,]*(USD|\$)?', caption, re.IGNORECASE)
-    price = price_match.group(1).replace(',', '') or price_match.group(2) if price_match else None
-    
-    # Extract product name (first non-empty line)
-    lines = [line.strip() for line in caption.split('\n') if line.strip()]
-    product_name = lines[0] if lines else "Unknown product"
-    
-    if not price:
-        bot.reply_to(message, "⚠ Could not detect price. Please contact support.")
-        return
-    
-    kb = telebot.types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        telebot.types.InlineKeyboardButton("Pay with BTC", callback_data=f"btc_{price}_{product_name[:30]}"),  # Shorten name for data
-        telebot.types.InlineKeyboardButton("Pay with Zcash", callback_data=f"zcash_{price}_{product_name[:30]}")
+def pay_buttons(chat_id, name, price):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton(f"Pay ${price} (BTC)", callback_data=f"paid_{price}"),
+        types.InlineKeyboardButton(f"Pay ${price} (XMR/ZEC)", callback_data=f"paid_{price}")
     )
-    
-    bot.send_message(message.chat.id,
-        f"🔥 Product: {product_name}\n💵 Price: ${price}\n\nChoose a payment method:",
-        reply_markup=kb)
+    markup.add(types.InlineKeyboardButton("I Already Paid", url="t.me/Backdoor_Operator"))
+    bot.send_message(chat_id,
+                     f"<b>PRODUCT:</b> {name}\n"
+                     f"<b>PRICE:</b> ${price}\n\n"
+                     "Choose payment method below:",
+                     reply_markup=markup)
 
+# === Callback Handler ===
 @bot.callback_query_handler(func=lambda call: True)
-def payment_callback(call):
-    data = call.data.split("_", 2)
-    method = "BTC" if data[0] == "btc" else "Zcash"
-    price = data[1]
-    name = data[2]  # Already shortened
-    
-    url = f"https://t.me/Backdoor_Operator?text=I%20completed%20payment%20for%20{name}%20${price}%20({method})"
-    
-    kb = telebot.types.InlineKeyboardMarkup()
-    kb.add(telebot.types.InlineKeyboardButton("✔ I Paid", url=url))
-    
-    bot.answer_callback_query(call.id)
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text=f"Payment Method: {method}\nTotal: ${price}\n\nSend EXACTLY the amount shown in USD.\n\nAfter payment, click “I Paid”.",
-        reply_markup=kb
-    )
+def callback(call):
+    if call.data == "categories":
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.id, reply_markup=categories_menu())
+    elif call.data.startswith("cat_"):
+        cat = call.data.split("_")[1]
+        items = products.get(call.data, ["No products yet"])
+        text = "<b>Category:</b> " + cat.upper() + "\n\n"
+        for item in items:
+            text += "• " + item + "\n"
+        text += "\nForward any post from @DarkWeb_MarketStore to order."
+        bot.edit_message_text(text, call.message.chat.id, call.message.id, reply_markup=back_button())
+    elif call.data == "howto":
+        bot.edit_message_text("<b>How to Order</b>\n\n"
+                              "1. Forward any product post from @DarkWeb_MarketStore\n"
+                              "2. Choose payment method\n"
+                              "3. Send proof to @Backdoor_Operator\n"
+                              "4. Receive delivery instantly",
+                              call.message.chat.id, call.message.id, reply_markup=back_button())
+    elif call.data == "back_main":
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.id, reply_markup=main_menu())
+    elif call.data.startswith("paid_"):
+        bot.answer_callback_query(call.id, "Contact @Backdoor_Operator with proof")
 
-# Keep polling forever
+def back_button():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("Back", callback_data="categories"))
+    return markup
+
+# === Start Polling ===
 if __name__ == "__main__":
+    print("DarkWeb Bot Started – No Emoji Edition")
     bot.infinity_polling()
